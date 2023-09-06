@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/xerrors"
 
-	"github.com/masahiro331/go-ext4-filesystem/log"
+	"github.com/amitschendel/go-ext4-filesystem/log"
 )
 
 /*
@@ -26,10 +26,7 @@ var (
 
 func Check(r io.Reader) bool {
 	_, err := parseSuperBlock(r)
-	if err != nil {
-		return false
-	}
-	return true
+	return err == nil
 }
 
 func (ext4 *FileSystem) Extents(inode *Inode) ([]Extent, error) {

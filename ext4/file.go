@@ -2,17 +2,18 @@ package ext4
 
 import (
 	"bytes"
-	"golang.org/x/xerrors"
 	"io"
 	"io/fs"
 	"path/filepath"
 	"time"
+
+	"golang.org/x/xerrors"
 )
 
 var (
-	_ fs.File     = &File{}
-	_ fs.FileInfo = &FileInfo{}
-	_ fs.DirEntry = dirEntry{}
+// _ fs.File     = &File{}
+// _ fs.FileInfo = &FileInfo{}
+// _ fs.DirEntry = dirEntry{}
 )
 
 // File is implemented io/fs File interface
@@ -38,12 +39,12 @@ type FileInfo struct {
 	mode fs.FileMode
 }
 
-// Type dirEntry is implemented io/fs DirEntry interface
-type dirEntry struct {
+// Type DirEntry is implemented io/fs DirEntry interface
+type DirEntry struct {
 	FileInfo
 }
 
-func (d dirEntry) Type() fs.FileMode {
+func (d DirEntry) Type() fs.FileMode {
 	return d.FileInfo.Mode().Type()
 }
 
@@ -51,7 +52,7 @@ func (f FileInfo) IsSymlink() bool {
 	return f.Mode()&fs.ModeSymlink != 0
 }
 
-func (d dirEntry) Info() (fs.FileInfo, error) { return d.FileInfo, nil }
+func (d DirEntry) Info() (FileInfo, error) { return d.FileInfo, nil }
 
 func (f File) Dir() string {
 	dir, _ := filepath.Split(f.filePath)
@@ -78,6 +79,18 @@ func (fi FileInfo) ModTime() time.Time {
 	return time.Unix(int64(fi.inode.Mtime), 0)
 }
 
+func (fi FileInfo) AccessTime() time.Time {
+	return time.Unix(int64(fi.inode.Atime), 0)
+}
+
+func (fi FileInfo) CreationTime() time.Time {
+	return time.Unix(int64(fi.inode.Crtime), 0)
+}
+
+func (fi FileInfo) ExtraCreationTime() time.Time {
+	return time.Unix(int64(fi.inode.CtimeExtra), 0)
+}
+
 func (fi FileInfo) IsDir() bool {
 	return fi.inode.IsDir()
 }
@@ -86,7 +99,7 @@ func (fi FileInfo) Sys() interface{} {
 	return nil
 }
 
-func (f *File) Stat() (fs.FileInfo, error) {
+func (f *File) Stat() (*FileInfo, error) {
 	return &f.FileInfo, nil
 }
 

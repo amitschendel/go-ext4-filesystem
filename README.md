@@ -1,43 +1,49 @@
 # go-ext4-filesystem 
 
 go-ext4-filesystem is ext4 filesystem stream parser.  
-This library implement io/fs interface. 
+This library was created by @masahiro331 and implement io/fs interface.
+I changed it to not support io/fs so It can be more flexable with the usage.
 
 
 ## Quick Start
-```
-func main() {
-    f, err := os.Open("filesystem.ext4")
-    if err != nil {
-        log.Fatal(err)
-    }
-	info, _ := f.Stat()
-    filesystem, err := ext4.NewFS(io.NewSectionReader(f,0, info.Size()), nil)
-    if err != nil {
-        log.Fatal(err)
-    }
-    
-	fs.WalkDir(filesystem, "/", func(path string, d fs.DirEntry, err error) error {
+```go
+func Walk(ext4fs *ext4.FileSystem, root string) error {
+	entries, err := ext4fs.ReadDir(root)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		fmt.Printf("Path: %s\n", path.Join(root, entry.Name()))
+
+		info, err := ext4fs.Stat(path.Join(root, entry.Name()))
 		if err != nil {
-			return xerrors.Errorf("file walk error: %w", err)
-		}
-		if d.IsDir() {
-			return nil
+			return err
 		}
 
-		fmt.Println(path)
-		if path == "/usr/lib/os-release" {
-			of, _ := os.Create("os-release")
-			defer of.Close()
+		fmt.Printf("Creation Time: %v\n", info.CreationTime())
 
-			sf, err := filesystem.Open(path)
-			if err != nil {
+		if entry.IsDir() {
+			if err := Walk(ext4fs, path.Join(root, entry.Name())); err != nil {
 				return err
 			}
-			io.Copy(of, sf)
 		}
-		return nil
-	})
+	}
+
+	return nil
 }
 
+func main() {
+	f, err := os.Open("ext4_image.img")
+	if err != nil {
+		log.Fatal(err)
+	}
+	info, _ := f.Stat()
+	filesystem, err := ext4.NewFS(*io.NewSectionReader(f, 0, info.Size()), nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	Walk(filesystem, "/")
+}
 ```

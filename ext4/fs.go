@@ -14,9 +14,9 @@ import (
 )
 
 var (
-	_ fs.FS        = &FileSystem{}
-	_ fs.ReadDirFS = &FileSystem{}
-	_ fs.StatFS    = &FileSystem{}
+	//_ fs.FS        = &FileSystem{}
+	//_ fs.ReadDirFS = &FileSystem{}
+	//_ fs.StatFS    = &FileSystem{}
 
 	ErrOpenSymlink = xerrors.New("open symlink does not support")
 )
@@ -88,7 +88,7 @@ func NewFS(r io.SectionReader, cache Cache[string, any]) (*FileSystem, error) {
 	return fs, nil
 }
 
-func (ext4 *FileSystem) ReadDir(path string) ([]fs.DirEntry, error) {
+func (ext4 *FileSystem) ReadDir(path string) ([]DirEntry, error) {
 	const op = "read directory"
 
 	dirEntries, err := ext4.readDirEntry(path)
@@ -98,7 +98,7 @@ func (ext4 *FileSystem) ReadDir(path string) ([]fs.DirEntry, error) {
 	return dirEntries, nil
 }
 
-func (ext4 *FileSystem) readDirEntry(name string) ([]fs.DirEntry, error) {
+func (ext4 *FileSystem) readDirEntry(name string) ([]DirEntry, error) {
 	fileInfos, err := ext4.listFileInfo(rootInodeNumber)
 	if err != nil {
 		return nil, xerrors.Errorf("failed to list file infos: %w", err)
@@ -107,12 +107,12 @@ func (ext4 *FileSystem) readDirEntry(name string) ([]fs.DirEntry, error) {
 	var currentIno int64
 	dirs := strings.Split(strings.Trim(filepath.Clean(name), "/"), "/")
 	if len(dirs) == 1 && dirs[0] == "." || dirs[0] == "" {
-		var dirEntries []fs.DirEntry
+		var dirEntries []DirEntry
 		for _, fileInfo := range fileInfos {
 			if fileInfo.Name() == "." || fileInfo.Name() == ".." {
 				continue
 			}
-			dirEntries = append(dirEntries, dirEntry{fileInfo})
+			dirEntries = append(dirEntries, DirEntry{fileInfo})
 		}
 		return dirEntries, nil
 	}
@@ -142,7 +142,7 @@ func (ext4 *FileSystem) readDirEntry(name string) ([]fs.DirEntry, error) {
 			continue
 		}
 
-		var dirEntries []fs.DirEntry
+		var dirEntries []DirEntry
 		for _, fileInfo := range fileInfos {
 			// Skip current directory and parent directory
 			// infinit loop in walkDir
@@ -150,7 +150,7 @@ func (ext4 *FileSystem) readDirEntry(name string) ([]fs.DirEntry, error) {
 				continue
 			}
 
-			dirEntries = append(dirEntries, dirEntry{fileInfo})
+			dirEntries = append(dirEntries, DirEntry{fileInfo})
 		}
 		return dirEntries, nil
 	}
@@ -228,7 +228,7 @@ func (ext4 *FileSystem) listEntries(ino int64) ([]DirectoryEntry2, error) {
 	return entries, nil
 }
 
-func (ext4 *FileSystem) Stat(name string) (fs.FileInfo, error) {
+func (ext4 *FileSystem) Stat(name string) (*FileInfo, error) {
 	const op = "stat"
 
 	f, err := ext4.Open(name)
@@ -246,13 +246,13 @@ func (ext4 *FileSystem) Stat(name string) (fs.FileInfo, error) {
 	return info, nil
 }
 
-func (ext4 *FileSystem) ReadDirInfo(name string) (fs.FileInfo, error) {
+func (ext4 *FileSystem) ReadDirInfo(name string) (*FileInfo, error) {
 	if name == "/" {
 		inode, err := ext4.getInode(rootInodeNumber)
 		if err != nil {
 			return nil, xerrors.Errorf("failed to parse root inode: %w", err)
 		}
-		return FileInfo{
+		return &FileInfo{
 			name:  "/",
 			inode: inode,
 			mode:  fs.FileMode(inode.Mode),
@@ -266,13 +266,16 @@ func (ext4 *FileSystem) ReadDirInfo(name string) (fs.FileInfo, error) {
 	}
 	for _, entry := range dirEntries {
 		if entry.Name() == strings.Trim(dir, "/") {
-			return entry.Info()
+			if info, err := entry.Info(); err == nil {
+				return &info, nil
+			}
+			return nil, xerrors.Errorf("failed to get info: %w", err)
 		}
 	}
 	return nil, fs.ErrNotExist
 }
 
-func (ext4 *FileSystem) Open(name string) (fs.File, error) {
+func (ext4 *FileSystem) Open(name string) (*File, error) {
 	const op = "open"
 
 	name = strings.TrimPrefix(name, "/")
@@ -290,23 +293,23 @@ func (ext4 *FileSystem) Open(name string) (fs.File, error) {
 		if entry.IsDir() || entry.Name() != fileName {
 			continue
 		}
-		dir, ok := entry.(dirEntry)
-		if !ok {
-			return nil, xerrors.Errorf("unspecified error, entry is not dir entry %+v", entry)
-		}
-		if dir.inode.Mode&0xA000 == 0xA000 {
+		//dir, ok := entry.(dirEntry)
+		// if !ok {
+		// 	return nil, xerrors.Errorf("unspecified error, entry is not dir entry %+v", entry)
+		// }
+		if entry.inode.Mode&0xA000 == 0xA000 {
 			return nil, ErrOpenSymlink
 		}
 
 		fi := FileInfo{
 			name:  fileName,
-			ino:   dir.ino,
-			inode: dir.inode,
-			mode:  fs.FileMode(dir.inode.Mode),
+			ino:   entry.ino,
+			inode: entry.inode,
+			mode:  fs.FileMode(entry.inode.Mode),
 		}
 		f, err := ext4.file(fi, name)
 		if err != nil {
-			return nil, xerrors.Errorf("failed to get file(inode: %d): %w", dir.ino, err)
+			return nil, xerrors.Errorf("failed to get file(inode: %d): %w", entry.ino, err)
 		}
 		return f, nil
 	}
